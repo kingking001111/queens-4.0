@@ -43,7 +43,7 @@
       position:absolute; left:6px; top:6px;
       font-size: 11px; opacity: .55;
     }
-    /* Grey cells are playable for notes (X/👑), but not valid for final 👑 */
+    /* Grey cells: usable for notes (X/👑), but queens there are invalid for final */
     .cell.blocked{
       background: #d6d6d6 !important;
       opacity: .95;
@@ -68,7 +68,8 @@
   <p class="sub">
     目標：在<strong>每行、每列、每個色塊區域</strong>中恰好有一個 👑。<br/>
     操作：<strong>點一下放 X</strong>，<strong>點兩下放 👑</strong>，<strong>再點一次清空</strong>。灰色格也可放 X／👑 做推理。<br/>
-    過關判定：只有<strong>放在有色區塊內</strong>的 👑 會被認可；且兩個 👑 不能相鄰（上下左右＋斜角都不行）。
+    過關判定：只有<strong>放在有色區塊內</strong>的 👑 會被認可；且兩個 👑 不能相鄰（上下左右＋斜角都不行）。<br/>
+    題目保證：<strong>每一題都是唯一解</strong>（會自動篩掉多解題）。
   </p>
 
   <div class="row">
@@ -81,7 +82,7 @@
       <option value="10">10×10</option>
     </select>
 
-    <button id="new">新題目</button>
+    <button id="new">新題目（唯一解）</button>
     <button id="clear">清空標記</button>
     <button id="check">檢查</button>
     <button id="solve">顯示解</button>
@@ -102,7 +103,7 @@
     <div class="card small">
       <div class="mono">👑座標：<span id="pos"></span></div>
       <div style="margin-top:10px;">
-        灰色格的 👑 只當作「推理筆記」，不會被過關判定接受（會標紅提醒）。<br/>
+        灰色格的 👑 只當作推理筆記，不會被過關判定接受（會標紅提醒）。<br/>
         X 是用來標記「這格不可能放 👑」。
       </div>
     </div>
@@ -150,10 +151,10 @@
   let seed = 0;
   let rng = Math.random;
 
-  // regionGrid: -1 = grey (not a region), 0..N-1 playable region id
+  // regionGrid: -1 = grey, 0..N-1 colored region id
   let regionGrid = [];
   let regionColors = [];
-  let solution = []; // [r] -> c (queen positions, always inside colored region)
+  let solution = []; // [r] -> c (valid solution on colored cells)
   let cells = [];
   let cellState = [];
 
@@ -202,7 +203,7 @@
       return false;
     }
 
-    for (let tries=0; tries<260; tries++){
+    for (let tries=0; tries<280; tries++){
       usedCols.clear();
       state.fill(-1);
       if (backtrack(0)) return state.slice();
@@ -214,13 +215,11 @@
   function buildSparseRegionsFromSolution(sol){
     const grid = Array.from({length:N}, ()=>Array(N).fill(-1));
 
-    // target sizes: 4 or 5 each
     const k = randInt(rng, 0, N + 1);
     const sizes = Array(N).fill(4);
     const ids = shuffle(rng, Array.from({length:N}, (_,i)=>i));
     for (let i=0;i<k;i++) sizes[ids[i]] = 5;
 
-    // seed each region at its solution queen cell
     for (let reg=0; reg<N; reg++){
       const r = reg;
       const c = sol[r];
@@ -291,6 +290,47 @@
     });
   }
 
+  // ---------- Unique-solution counter (colored cells only) ----------
+  // Counts solutions for the REAL win condition (queens must be on colored cells).
+  // Stops early once it finds 2.
+  function countSolutions(maxSolutions = 2) {
+    let count = 0;
+    const colUsed = Array(N).fill(false);
+    const regUsed = Array(N).fill(false);
+    const placedCol = Array(N).fill(-1);
+
+    function dfs(r) {
+      if (count >= maxSolutions) return;
+      if (r === N) { count++; return; }
+
+      for (let c = 0; c < N; c++) {
+        const reg = regionGrid[r][c];
+        if (reg === -1) continue;      // only colored cells are allowed
+        if (colUsed[c]) continue;
+        if (regUsed[reg]) continue;
+
+        // adjacency: only row r-1 can be adjacent because we place exactly 1 per row
+        if (r > 0) {
+          const pc = placedCol[r - 1];
+          if (pc !== -1 && Math.abs(pc - c) <= 1) continue;
+        }
+
+        colUsed[c] = true;
+        regUsed[reg] = true;
+        placedCol[r] = c;
+
+        dfs(r + 1);
+
+        colUsed[c] = false;
+        regUsed[reg] = false;
+        placedCol[r] = -1;
+      }
+    }
+
+    dfs(0);
+    return count;
+  }
+
   // ---------- UI build ----------
   function buildBoard(){
     boardEl.innerHTML = '';
@@ -338,7 +378,7 @@
     }
   }
 
-  // Cycle: empty -> X -> Queen -> empty (works on both colored and grey)
+  // Cycle: empty -> X -> Queen -> empty
   function cycleCell(r,c){
     const v = cellState[r][c];
     cellState[r][c] = (v + 1) % 3;
@@ -349,12 +389,9 @@
     const queensPos = queenPositions();
     const bad = new Set();
 
-    // Count queens per row/col (ALL queens, including grey)
     const rowCount = Array(N).fill(0);
     const colCount = Array(N).fill(0);
-
-    // Count queens per region (ONLY colored regions)
-    const regCount = Array(N).fill(0);
+    const regCount = Array(N).fill(0); // colored only
 
     for (const [r,c] of queensPos){
       rowCount[r]++; colCount[c]++;
@@ -362,18 +399,13 @@
       if (reg >= 0) regCount[reg]++;
     }
 
-    // Mark queens that violate row/col uniqueness
     for (const [r,c] of queensPos){
       const reg = regionGrid[r][c];
-
-      // Queen placed on grey is always invalid for final -> mark conflict
-      if (reg === -1) bad.add(`${r},${c}`);
-
+      if (reg === -1) bad.add(`${r},${c}`); // grey queen is invalid for final
       if (rowCount[r] > 1 || colCount[c] > 1) bad.add(`${r},${c}`);
       if (reg >= 0 && regCount[reg] > 1) bad.add(`${r},${c}`);
     }
 
-    // Adjacency conflicts (ALL queens anywhere)
     for (let i=0;i<queensPos.length;i++){
       for (let j=i+1;j<queensPos.length;j++){
         const [r1,c1]=queensPos[i], [r2,c2]=queensPos[j];
@@ -383,7 +415,6 @@
         }
       }
     }
-
     return bad;
   }
 
@@ -421,7 +452,7 @@
     posEl.textContent = list;
 
     if (qCnt === 0) statusEl.textContent = '-';
-    else if (bad.size > 0) statusEl.innerHTML = `<span class="bad">有衝突（含灰色👑也會標紅）</span>`;
+    else if (bad.size > 0) statusEl.innerHTML = `<span class="bad">有衝突（灰色👑也會標紅）</span>`;
     else statusEl.innerHTML = `<span class="ok">OK（暫無衝突）</span>`;
   }
 
@@ -436,34 +467,28 @@
     const queensPos = queenPositions();
     const bad = computeConflicts();
 
-    // Need exactly N queens total
     if (queensPos.length !== N){
       statusEl.innerHTML = `<span class="bad">👑數量不對（${queensPos.length}/${N}）</span>`;
       return;
     }
-
-    // All queens must be in colored regions
     for (const [r,c] of queensPos){
       if (regionGrid[r][c] === -1){
         statusEl.innerHTML = `<span class="bad">灰色格上的 👑 不算過關（請移到色塊內）</span>`;
         return;
       }
     }
-
     if (bad.size > 0){
       statusEl.innerHTML = `<span class="bad">有衝突，紅框處要調整</span>`;
       return;
     }
 
-    // Ensure exactly one queen per row/col/region (now queens are all colored)
     const rowCount = Array(N).fill(0);
     const colCount = Array(N).fill(0);
     const regCount = Array(N).fill(0);
 
     for (const [r,c] of queensPos){
       rowCount[r]++; colCount[c]++;
-      const reg = regionGrid[r][c];
-      regCount[reg]++;
+      regCount[regionGrid[r][c]]++;
     }
 
     for (let i=0;i<N;i++){
@@ -478,14 +503,13 @@
   function showSolution(){
     clearMarks();
     for (let r=0;r<N;r++){
-      const c = solution[r];
-      cellState[r][c] = 2;
+      cellState[r][solution[r]] = 2;
     }
     updateUI();
     statusEl.innerHTML = `<span class="ok">已顯示解</span>`;
   }
 
-  // ---------- Puzzle generation ----------
+  // ---------- Puzzle generation (UNIQUE ONLY) ----------
   function genPuzzle(){
     seed = (Date.now() ^ (Math.random()*1e9)) >>> 0;
     rng = mulberry32(seed);
@@ -494,21 +518,20 @@
     N = parseInt(sizeSel.value, 10);
     nEl.textContent = String(N);
 
-    for (let attempt=0; attempt<600; attempt++){
+    statusEl.textContent = 'Generating…';
+
+    for (let attempt=0; attempt<900; attempt++){
       const sol = genBaseSolutionOnlyNoAdj();
       const reg = buildSparseRegionsFromSolution(sol);
       if (!reg) continue;
 
-       // set puzzle definition first
       regionGrid = reg;
 
-       // ✅ uniqueness filter: accept only puzzles with exactly ONE solution
-      const num = countSolutions(2); // stop counting once we find 2
+      // uniqueness filter
+      const num = countSolutions(2); // 0, 1, or 2(=2+)
       if (num !== 1) continue;
 
-       // sol is guaranteed to be that unique solution (we built regions from it)
       solution = sol;
-
       buildColors();
       initCellState();
       buildBoard();
@@ -516,7 +539,7 @@
       statusEl.textContent = '-';
       return;
     }
-    throw new Error("生成失敗：請再按一次「新題目」或改變尺寸。");
+    throw new Error("生成失敗：唯一解條件下比較挑。請再按一次「新題目」，或先用 8×8。");
   }
 
   // ---------- Events ----------
@@ -526,49 +549,8 @@
   solveBtn.addEventListener('click', showSolution);
   sizeSel.addEventListener('change', () => { try { genPuzzle(); } catch(e){ alert(e.message || String(e)); } });
 
-  // Initial
   genPuzzle();
 })();
-</script>  
-  // Count number of solutions for THIS puzzle (colored cells only).
-  // Stops early once it finds 2 solutions.
-  function countSolutions(maxSolutions = 2) {
-    let count = 0;
-    const colUsed = Array(N).fill(false);
-    const regUsed = Array(N).fill(false);
-    const placedCol = Array(N).fill(-1);
-
-    function dfs(r) {
-      if (count >= maxSolutions) return;
-      if (r === N) { count++; return; }
-
-      for (let c = 0; c < N; c++) {
-        const reg = regionGrid[r][c];
-        if (reg === -1) continue;         // only colored cells are allowed
-        if (colUsed[c]) continue;
-        if (regUsed[reg]) continue;
-
-        // adjacency: because we place exactly 1 per row, only row r-1 can be adjacent
-        if (r > 0) {
-          const pc = placedCol[r - 1];
-          if (pc !== -1 && Math.abs(pc - c) <= 1) continue; // includes diagonal and vertical adjacency
-        }
-
-        colUsed[c] = true;
-        regUsed[reg] = true;
-        placedCol[r] = c;
-
-        dfs(r + 1);
-
-        colUsed[c] = false;
-        regUsed[reg] = false;
-        placedCol[r] = -1;
-      }
-    }
-
-    dfs(0);
-    return count;
-  }
-
+</script>
 </body>
 </html>
