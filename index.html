@@ -494,13 +494,21 @@
     N = parseInt(sizeSel.value, 10);
     nEl.textContent = String(N);
 
-    for (let attempt=0; attempt<180; attempt++){
+        for (let attempt=0; attempt<600; attempt++){
       const sol = genBaseSolutionOnlyNoAdj();
       const reg = buildSparseRegionsFromSolution(sol);
       if (!reg) continue;
 
-      solution = sol;
+      // set puzzle definition first
       regionGrid = reg;
+
+      // ✅ uniqueness filter: accept only puzzles with exactly ONE solution
+      const num = countSolutions(2); // stop counting once we find 2
+      if (num !== 1) continue;
+
+      // sol is guaranteed to be that unique solution (we built regions from it)
+      solution = sol;
+
       buildColors();
       initCellState();
       buildBoard();
@@ -508,6 +516,7 @@
       statusEl.textContent = '-';
       return;
     }
+
     throw new Error("生成失敗：請再按一次「新題目」或改變尺寸。");
   }
 
