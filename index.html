@@ -522,5 +522,45 @@
   genPuzzle();
 })();
 </script>
+    // Count number of solutions for THIS puzzle (colored cells only).
+  // Stops early once it finds 2 solutions.
+  function countSolutions(maxSolutions = 2) {
+    let count = 0;
+    const colUsed = Array(N).fill(false);
+    const regUsed = Array(N).fill(false);
+    const placedCol = Array(N).fill(-1);
+
+    function dfs(r) {
+      if (count >= maxSolutions) return;
+      if (r === N) { count++; return; }
+
+      for (let c = 0; c < N; c++) {
+        const reg = regionGrid[r][c];
+        if (reg === -1) continue;         // only colored cells are allowed
+        if (colUsed[c]) continue;
+        if (regUsed[reg]) continue;
+
+        // adjacency: because we place exactly 1 per row, only row r-1 can be adjacent
+        if (r > 0) {
+          const pc = placedCol[r - 1];
+          if (pc !== -1 && Math.abs(pc - c) <= 1) continue; // includes diagonal and vertical adjacency
+        }
+
+        colUsed[c] = true;
+        regUsed[reg] = true;
+        placedCol[r] = c;
+
+        dfs(r + 1);
+
+        colUsed[c] = false;
+        regUsed[reg] = false;
+        placedCol[r] = -1;
+      }
+    }
+
+    dfs(0);
+    return count;
+  }
+
 </body>
 </html>
