@@ -494,19 +494,19 @@
     N = parseInt(sizeSel.value, 10);
     nEl.textContent = String(N);
 
-        for (let attempt=0; attempt<600; attempt++){
+    for (let attempt=0; attempt<600; attempt++){
       const sol = genBaseSolutionOnlyNoAdj();
       const reg = buildSparseRegionsFromSolution(sol);
       if (!reg) continue;
 
-      // set puzzle definition first
+       // set puzzle definition first
       regionGrid = reg;
 
-      // ✅ uniqueness filter: accept only puzzles with exactly ONE solution
+       // ✅ uniqueness filter: accept only puzzles with exactly ONE solution
       const num = countSolutions(2); // stop counting once we find 2
       if (num !== 1) continue;
 
-      // sol is guaranteed to be that unique solution (we built regions from it)
+       // sol is guaranteed to be that unique solution (we built regions from it)
       solution = sol;
 
       buildColors();
@@ -516,7 +516,6 @@
       statusEl.textContent = '-';
       return;
     }
-
     throw new Error("生成失敗：請再按一次「新題目」或改變尺寸。");
   }
 
@@ -530,8 +529,8 @@
   // Initial
   genPuzzle();
 })();
-</script>
-    // Count number of solutions for THIS puzzle (colored cells only).
+</script>  
+  // Count number of solutions for THIS puzzle (colored cells only).
   // Stops early once it finds 2 solutions.
   function countSolutions(maxSolutions = 2) {
     let count = 0;
